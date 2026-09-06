@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ブランド品 eBay 売れ筋リサーチ</title>
+<style>
+  :root {
+    --bg: #f6f3ee; --card: #ffffff; --ink: #1c1b18; --muted: #6b6760; --line: #e3ddd2;
+    --navy: #1f2a44; --navy2: #2d3d63; --gold: #b8933f; --gold2: #d9b866; --goldbg: #fbf5e6;
+    --ok: #2f7d4f; --okbg: #e6f4ea; --warn: #b26a00; --warnbg: #fff4e0; --bad: #a83a3a; --badbg: #fbe9e9; --info: #2b5fa8; --infobg: #e8f0fb;
+    --s: #7a4bcf; --sbg: #efe8fb;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", "Hiragino Sans", "Yu Gothic UI", Meiryo, sans-serif; background: var(--bg); color: var(--ink); font-size: 14px; line-height: 1.5; }
+  a { color: var(--info); }
+  header { background: linear-gradient(120deg, var(--navy) 0%, var(--navy2) 100%); color: #fff; padding: 14px 20px; }
+  header .wrap { max-width: 1280px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  header h1 { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: .02em; }
+  header h1 span { color: var(--gold2); }
+  header p { margin: 2px 0 0; font-size: 12px; opacity: .85; }
+  .hbtn { background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.3); color: #fff; padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: 13px; }
+  .hbtn:hover { background: rgba(255,255,255,.22); }
+  nav.tabs { max-width: 1280px; margin: 0 auto; display: flex; gap: 4px; padding: 10px 20px 0; flex-wrap: wrap; }
+  nav.tabs button { background: transparent; border: none; border-bottom: 3px solid transparent; padding: 8px 14px; font-size: 14px; color: var(--muted); cursor: pointer; font-weight: 600; }
+  nav.tabs button.active { color: var(--navy); border-color: var(--gold); }
+  main { max-width: 1280px; margin: 0 auto; padding: 14px 20px 60px; }
+  .pane { display: none; } .pane.active { display: block; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; margin-bottom: 14px; box-shadow: 0 1px 3px rgba(31,42,68,.05); }
+  .card h2 { margin: 0 0 10px; font-size: 16px; color: var(--navy); }
+  .card h3 { margin: 14px 0 6px; font-size: 14px; color: var(--navy); }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .row > label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); font-weight: 600; }
+  select, input[type=text], input[type=number], textarea { border: 1px solid #cfc7b8; border-radius: 8px; padding: 7px 9px; font-size: 14px; background: #fff; color: var(--ink); font-family: inherit; }
+  select:focus, input:focus, textarea:focus { outline: none; border-color: var(--gold); box-shadow: 0 0 0 3px rgba(184,147,63,.18); }
+  textarea { width: 100%; min-height: 110px; font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
+  button.btn { background: var(--navy); color: #fff; border: none; border-radius: 8px; padding: 8px 14px; font-size: 13px; cursor: pointer; font-weight: 600; }
+  button.btn:hover { background: var(--navy2); }
+  button.btn.gold { background: linear-gradient(135deg, var(--gold), #a07f30); }
+  button.btn.ghost { background: #fff; color: var(--navy); border: 1px solid #cfc7b8; }
+  button.btn.danger { background: var(--bad); }
+  button.btn.sm { padding: 4px 9px; font-size: 12px; }
+  .chip { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; border: 1px solid var(--line); background: #fff; cursor: pointer; color: var(--muted); }
+  .chip.on { background: var(--navy); color: #fff; border-color: var(--navy); }
+  .badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+  .b-S { background: var(--sbg); color: var(--s); } .b-A { background: var(--okbg); color: var(--ok); } .b-B { background: var(--infobg); color: var(--info); } .b-C { background: var(--warnbg); color: var(--warn); } .b-D { background: var(--badbg); color: var(--bad); } .b-N { background: #efece6; color: var(--muted); }
+  .b-gold { background: var(--goldbg); color: var(--gold); border: 1px solid var(--gold2); }
+  .tbl-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { padding: 7px 8px; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; vertical-align: middle; }
+  th { background: #f1ede5; color: var(--navy); font-size: 12px; position: sticky; top: 0; cursor: pointer; user-select: none; }
+  th.sorted::after { content: ' ▼'; color: var(--gold); }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  tr.click { cursor: pointer; } tr.click:hover { background: var(--goldbg); }
+  tr.dim td { color: #9a958c; }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  .kpi { background: #faf8f4; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+  .kpi .l { font-size: 11px; color: var(--muted); font-weight: 600; }
+  .kpi .v { font-size: 22px; font-weight: 700; color: var(--navy); line-height: 1.2; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .kpi .s { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .kpi.hi .v { color: var(--gold); }
+  .bars { display: grid; gap: 5px; }
+  .bar { display: grid; grid-template-columns: 110px 1fr 60px; gap: 8px; align-items: center; font-size: 12px; }
+  .bar .track { background: #eeeae2; border-radius: 6px; height: 16px; overflow: hidden; }
+  .bar .fill { height: 100%; background: linear-gradient(90deg, var(--navy2), var(--gold)); border-radius: 6px; }
+  .bar .n { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
+  .muted { color: var(--muted); font-size: 12px; }
+  .note { background: var(--goldbg); border-left: 4px solid var(--gold); padding: 8px 12px; border-radius: 6px; font-size: 13px; }
+  .warnbox { background: var(--warnbg); border-left: 4px solid var(--warn); padding: 8px 12px; border-radius: 6px; font-size: 13px; }
+  .okbox { background: var(--okbg); border-left: 4px solid var(--ok); padding: 8px 12px; border-radius: 6px; font-size: 13px; }
+  .links a { display: inline-block; margin: 2px 6px 2px 0; padding: 3px 9px; border: 1px solid #cfd8ea; border-radius: 999px; font-size: 12px; text-decoration: none; background: #fff; }
+  .links a:hover { background: var(--infobg); }
+  .bm { display: inline-block; padding: 10px 16px; background: linear-gradient(135deg, var(--gold), #a07f30); color: #fff; border-radius: 10px; font-weight: 700; text-decoration: none; cursor: grab; box-shadow: 0 2px 6px rgba(160,127,48,.3); }
+  ol.steps li { margin-bottom: 6px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 800px) { .grid2 { grid-template-columns: 1fr; } .bar { grid-template-columns: 90px 1fr 50px; } }
+  .tagcloud span { display: inline-block; margin: 2px 4px 2px 0; padding: 2px 8px; background: #f1ede5; border-radius: 999px; font-size: 12px; }
+  .tagcloud span b { color: var(--navy); }
+  .right { margin-left: auto; }
+  .hidden { display: none !important; }
+  #toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--navy); color: #fff; padding: 10px 16px; border-radius: 10px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 99; }
+  #toast.show { opacity: 1; }
+  .settings-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px 16px; }
+  .settings-grid label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); font-weight: 600; }
+  .settings-grid input, .settings-grid select { width: 100%; }
+  .stars { color: var(--gold); letter-spacing: -1px; }
+  dl.defs dt { font-weight: 700; color: var(--navy); margin-top: 8px; } dl.defs dd { margin: 0 0 4px 0; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <div>
+      <h1>ブランド品 <span>eBay</span> 売れ筋リサーチ</h1>
+      <p>ブランド×カテゴリごとの「売れる数・回転の速さ・売れ筋モデル・仕入上限」を実測データから判定</p>
+    </div>
+    <div class="row">
+      <button class="hbtn" id="btnExportRank">ランキングCSV</button>
+      <button class="hbtn" id="btnGoImport">＋ データ取り込み</button>
+    </div>
+  </div>
+</header>
+
+<nav class="tabs">
+  <button data-tab="rank" class="active">ランキング</button>
+  <button data-tab="detail">詳細分析</button>
+  <button data-tab="import">データ取り込み</button>
+  <button data-tab="settings">設定（為替・手数料・送料）</button>
+  <button data-tab="help">使い方</button>
+</nav>
+
+<main>
+  <!-- ===== ランキング ===== -->
+  <section id="pane-rank" class="pane active">
+    <div class="card">
+      <div class="row">
+        <label>ブランド
+          <select id="fBrand"></select>
+        </label>
+        <label>カテゴリ
+          <select id="fCat"></select>
+        </label>
+        <label>並び順
+          <select id="fSort">
+            <option value="score">総合スコア</option>
+            <option value="sold30">30日の売れた数</option>
+            <option value="perDay">1日あたり売れた数</option>
+            <option value="daysSupply">在庫消化日数（少ない＝回転が速い）</option>
+            <option value="sellThrough">売切率</option>
+            <option value="median">売れた中央値（USD）</option>
+            <option value="maxBuy">仕入上限（円）</option>
+            <option value="star">内蔵の需要★</option>
+          </select>
+        </label>
+        <label>グループ
+          <div class="row" id="fGroups" style="gap:4px">
+            <span class="chip on" data-g="all">すべて</span>
+            <span class="chip" data-g="lux">ラグジュアリー</span>
+            <span class="chip" data-g="affordable">手頃ブランド</span>
+            <span class="chip" data-g="jewelry">ジュエリー・時計</span>
+            <span class="chip" data-g="jp">日本発・ストリート</span>
+          </div>
+        </label>
+        <label style="flex-direction:row;align-items:center;gap:6px;margin-top:14px">
+          <input type="checkbox" id="fMeasured"> 実測データありのみ
+        </label>
+      </div>
+    </div>
+
+    <div class="card" id="rankSummary"></div>
+
+    <div class="card">
+      <div class="row" style="margin-bottom:8px">
+        <h2 style="margin:0">ブランド×カテゴリ ランキング</h2>
+        <span class="muted right">行をクリックすると詳細分析へ。数値は実測データ（Sold＝直近約90日）から計算。「—」は未計測。</span>
+      </div>
+      <div class="tbl-wrap"><table id="rankTable"><thead></thead><tbody></tbody></table></div>
+    </div>
+  </section>
+
+  <!-- ===== 詳細 ===== -->
+  <section id="pane-detail" class="pane">
+    <div class="card">
+      <div class="row">
+        <label>ブランド<select id="dBrand"></select></label>
+        <label>カテゴリ<select id="dCat"></select></label>
+        <div class="right links" id="dLinks"></div>
+      </div>
+    </div>
+    <div id="detailBody"></div>
+  </section>
+
+  <!-- ===== 取り込み ===== -->
+  <section id="pane-import" class="pane">
+    <div class="grid2">
+      <div class="card">
+        <h2>① ブックマークレットを登録（初回のみ）</h2>
+        <p class="muted">下のボタンをブラウザのブックマークバーへドラッグ＆ドロップしてください（スマホの場合は「使い方」タブ参照）。</p>
+        <p><a id="bmEbay" class="bm" href="#">eBay取込 → リサーチ</a></p>
+        <p class="muted">eBay の検索結果ページで実行すると、Sold（売れた商品）なら最大 5 ページ（約1,200件）、出品中なら 2 ページ分を自動で集めてクリップボードにコピーします。</p>
+      </div>
+      <div class="card">
+        <h2>② eBay の検索結果を開く</h2>
+        <div class="row">
+          <label>ブランド<select id="iBrand"></select></label>
+          <label>カテゴリ<select id="iCat"></select></label>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <button class="btn gold" id="iOpenSold">Sold（売れた商品）を開く</button>
+          <button class="btn" id="iOpenActive">出品中を開く</button>
+          <label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="iJpOnly" checked> 日本セラーのみ</label>
+        </div>
+        <p class="muted" style="margin-top:8px">開いたページでブックマークレットをクリック → 集計が終わったら下の欄に貼り付け。Sold と出品中の両方を取り込むと「売切率」「在庫消化日数」が出ます。</p>
+        <div id="iQueue"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>③ 貼り付けて取り込み</h2>
+      <textarea id="iPaste" placeholder='ブックマークレットでコピーした JSON をここに貼り付け（Ctrl+V）'></textarea>
+      <div class="row" style="margin-top:8px">
+        <button class="btn gold" id="iParse">解析する</button>
+        <span class="muted">または CSV（Terapeak の Sold エクスポート等）：</span>
+        <input type="file" id="iCsv" accept=".csv,text/csv">
+      </div>
+      <div id="iPreview" style="margin-top:10px"></div>
+    </div>
+
+    <div class="card">
+      <div class="row" style="margin-bottom:6px">
+        <h2 style="margin:0">取り込み済みデータ</h2>
+        <div class="right row">
+          <button class="btn ghost sm" id="iBackup">JSONバックアップ</button>
+          <label class="btn ghost sm" style="cursor:pointer">復元<input type="file" id="iRestore" accept=".json" class="hidden"></label>
+        </div>
+      </div>
+      <div class="tbl-wrap"><table id="dsTable"><thead><tr><th>取込日時</th><th>ブランド</th><th>カテゴリ</th><th>種別</th><th>検索語</th><th class="num">件数</th><th class="num">eBay表示件数</th><th>ページ</th><th></th></tr></thead><tbody></tbody></table></div>
+      <p class="muted">同じブランド×カテゴリ×種別は、いちばん新しい取り込みが使われます。データはこのブラウザ内（localStorage）に保存されます。</p>
+    </div>
+  </section>
+
+  <!-- ===== 設定 ===== -->
+  <section id="pane-settings" class="pane">
+    <div class="card">
+      <h2>利益計算の前提</h2>
+      <div class="settings-grid">
+        <label>為替レート（1USD＝円）<div class="row"><input type="number" id="sRate" step="0.1" style="flex:1"><button class="btn ghost sm" id="sRateFetch">最新取得</button></div></label>
+        <label>eBay 手数料（%・落札価格に対して）<input type="number" id="sFee" step="0.1"></label>
+        <label>その他手数料（%・決済/海外/Payoneer等）<input type="number" id="sOther" step="0.1"></label>
+        <label>米国関税（%）<input type="number" id="sTariff" step="0.1"></label>
+        <label>関税の負担
+          <select id="sTariffMode"><option value="seller">セラー負担として費用計上</option><option value="buyer">バイヤー負担（費用に含めない）</option></select>
+        </label>
+        <label>目標利益率（%・売上に対して）<input type="number" id="sMargin" step="1"></label>
+        <label>梱包資材（円/件）<input type="number" id="sPack" step="10"></label>
+        <label>実測の最低サンプル数（これ未満は参考扱い）<input type="number" id="sMinN" step="1"></label>
+      </div>
+      <h3>カテゴリ別 送料（円・日本→米国、梱包後の目安）</h3>
+      <div class="settings-grid" id="sShip"></div>
+      <div class="row" style="margin-top:12px">
+        <button class="btn gold" id="sSave">保存</button>
+        <button class="btn ghost" id="sReset">初期値に戻す</button>
+        <button class="btn danger right" id="sWipe">取り込みデータをすべて削除</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>総合スコアの重み</h2>
+      <p class="muted">実測データがある行だけスコアが付きます。売切率は出品中データがある場合のみ加味（ない場合は他の重みで按分）。</p>
+      <div class="settings-grid">
+        <label>回転（1日あたり売れた数）<input type="number" id="wV" step="1"></label>
+        <label>売切率<input type="number" id="wST" step="1"></label>
+        <label>単価（売れた中央値）<input type="number" id="wP" step="1"></label>
+        <label>日本セラー比率<input type="number" id="wJ" step="1"></label>
+        <label>価格の安定度<input type="number" id="wS" step="1"></label>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 使い方 ===== -->
+  <section id="pane-help" class="pane">
+    <div class="card">
+      <h2>このツールでできること</h2>
+      <ul>
+        <li>ブランドごと・カテゴリ（バッグ／財布／小物…）ごと・全体で、<b>どれがよく売れて回転が速いか</b>をランキング表示</li>
+        <li>eBay の Sold（売れた商品）データを取り込み、<b>30日の売れた数・1日あたり・売切率・在庫消化日数・中央値・価格帯分布</b>を自動計算</li>
+        <li>タイトルから<b>売れ筋モデル（Speedy／Neverfull／Marmont…）・ライン・色・サイズ</b>を自動抽出し、モデル別の中央値と仕入上限を表示</li>
+        <li>為替・手数料・関税・送料・目標利益率から<b>仕入上限（円）</b>を逆算。メルカリ／ヤフオク／セカスト等への仕入検索リンク付き</li>
+      </ul>
+      <div class="note">実測データがないブランド×カテゴリは、内蔵の「需要★」と「価格帯目安」だけを表示します。あくまで目安なので、気になる組み合わせは必ず Sold を取り込んで実測してください。</div>
+    </div>
+    <div class="card">
+      <h2>手順</h2>
+      <ol class="steps">
+        <li>「データ取り込み」タブで <b>ブックマークレット</b>をブックマークバーへドラッグ（初回のみ）。</li>
+        <li>ブランドとカテゴリを選び「Sold を開く」→ eBay の売れた商品一覧が開く（日本セラーのみ・売れた日が新しい順・240件表示）。</li>
+        <li>そのページでブックマークレットをクリック。自動で次ページも集めてコピーされる（数秒〜20秒）。</li>
+        <li>ツールに戻り、貼り付け → 解析 → ブランド・カテゴリを確認して保存。</li>
+        <li>同じ要領で「出品中を開く」→ ブックマークレット → 貼り付け（売切率・在庫消化日数に必要）。</li>
+        <li>ランキングで比較 → 行をクリックして詳細分析 → 売れ筋モデルの仕入上限を見ながら仕入先リンクで探す。</li>
+      </ol>
+      <p class="muted">スマホ（iOS Safari / Android Chrome）：ブックマークレットのリンクを長押し→「リンクをコピー」→任意のページをブックマーク→ブックマーク編集で URL を貼り替え。</p>
+    </div>
+    <div class="card">
+      <h2>指標の意味</h2>
+      <dl class="defs">
+        <dt>30日の売れた数 / 1日あたり</dt><dd>取り込んだ Sold の「売れた日」から計算。取り込み件数が eBay の表示件数より少ない場合は、集めた期間から換算。</dd>
+        <dt>90日の売れた数</dt><dd>eBay の Sold 一覧が対象とする直近およそ 90 日分の総数（eBay の表示件数）。</dd>
+        <dt>売切率</dt><dd>90日の売れた数 ÷（90日の売れた数＋現在の出品中数）。高いほど供給不足＝売れやすい。</dd>
+        <dt>在庫消化日数</dt><dd>現在の出品中数 ÷ 1日あたり売れた数。いま出品されている分が何日で捌けるか。<b>少ないほど回転が速い</b>。</dd>
+        <dt>日本セラー比率</dt><dd>売れた商品のうち発送元が Japan の割合。高いほど日本からの出品が受け入れられているジャンル。</dd>
+        <dt>仕入上限（円）</dt><dd>売れた中央値 × 為替 − 手数料 − 関税（セラー負担時）− 送料 − 梱包 − 目標利益。この金額以下で仕入れれば目標利益率を確保できる目安。</dd>
+        <dt>総合スコア / 判定</dt><dd>回転・売切率・単価・日本セラー比率・価格安定度を重み付けして 0〜100 点。S（75以上）A（60）B（45）C（30）D。</dd>
+      </dl>
+    </div>
+    <div class="card">
+      <h2>注意</h2>
+      <ul>
+        <li>eBay のページ構造が変わると取り込めなくなることがあります。件数が 0 の場合はページを再読み込みして再実行してください。</li>
+        <li>eBay の Sold 一覧は「実際に売れた価格」ですが、値引き交渉（Best Offer）成立分は表示価格と異なる場合があります。</li>
+        <li>高額ブランド品は eBay Authenticity Guarantee・偽物申告・返品リスクがあります。関税や返品分は設定で余裕を持たせてください。</li>
+      </ul>
+    </div>
+  </section>
+</main>
+
+<div id="toast"></div>
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
