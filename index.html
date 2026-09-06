@@ -215,7 +215,7 @@
           <label class="btn ghost sm" style="cursor:pointer">復元<input type="file" id="iRestore" accept=".json" class="hidden"></label>
         </div>
       </div>
-      <div class="tbl-wrap"><table id="dsTable"><thead><tr><th>取込日時</th><th>ブランド</th><th>カテゴリ</th><th>種別</th><th>検索語</th><th class="num">件数</th><th class="num">eBay表示件数</th><th>ページ</th><th></th></tr></thead><tbody></tbody></table></div>
+      <div class="tbl-wrap"><table id="dsTable"><thead><tr><th>取込日時</th><th>ブランド</th><th>カテゴリ</th><th>種別</th><th>検索語</th><th class="num">件数</th><th class="num">eBay表示件数</th><th>ページ</th><th>通貨</th><th></th></tr></thead><tbody></tbody></table></div>
       <p class="muted">同じブランド×カテゴリ×種別は、いちばん新しい取り込みが使われます。データはこのブラウザ内（localStorage）に保存されます。</p>
     </div>
   </section>
@@ -296,6 +296,7 @@
     <div class="card">
       <h2>注意</h2>
       <ul>
+        <li>eBay を日本から見ると価格が「JPY 34,924」のように円表示になることがあります。ブックマークレットは通貨を判定して自動でドルに換算します（設定の為替を使用）。もし取り込み済みデータの中央値が異常に大きい場合は、取り込みタブの「円→$換算」ボタンで直せます。</li>
         <li>eBay のページ構造が変わると取り込めなくなることがあります。件数が 0 の場合はページを再読み込みして再実行してください。</li>
         <li>eBay の Sold 一覧は「実際に売れた価格」ですが、値引き交渉（Best Offer）成立分は表示価格と異なる場合があります。</li>
         <li>高額ブランド品は eBay Authenticity Guarantee・偽物申告・返品リスクがあります。関税や返品分は設定で余裕を持たせてください。</li>

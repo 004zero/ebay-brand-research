@@ -456,15 +456,27 @@ async function BM_EBAY() {
       const txt = TX(li).replace(/\s+/g, ' ');
       const t = S(li, ['.s-item__title', '.s-card__title', '[role=heading]', 'h3']);
       if (!t || /^Shop on eBay/i.test(t) || /^New Listing$/i.test(t)) continue;
-      let p = S(li, ['.s-item__price', '.s-card__price', '[class*=price]']);
-      let m = p.replace(/,/g, '').match(/(\d+(?:\.\d{1,2})?)/);
-      if (!m) m = txt.replace(/,/g, '').match(/\$\s?(\d+(?:\.\d{1,2})?)/);
+      const ptxt = S(li, ['.s-item__price', '.s-card__price', '[class*=price]']);
+      const NUM = '([\\d,]+(?:\\.\\d{1,2})?)';
+      let cur = 'USD';
+      // 優先順: 「US $」表記（円表示時の approx.）→ 「$」→ 他通貨（JPY/EUR/GBP/CAD/AUD）
+      let m = ptxt.match(new RegExp('US\\s?\\$\\s?' + NUM)) || txt.match(new RegExp('(?:approx(?:imately)?\\.?\\s*)US\\s?\\$\\s?' + NUM, 'i'));
+      if (!m) { m = ptxt.match(new RegExp('(?<![A-Z])\\$\\s?' + NUM)); if (m && /\bC\s?\$/.test(ptxt)) cur = 'CAD'; if (m && /\bAU?\s?\$/.test(ptxt)) cur = 'AUD'; }
+      if (!m) { m = ptxt.match(new RegExp('(?:JPY|¥|￥)\\s?' + NUM)) || txt.match(new RegExp('(?:JPY|¥|￥)\\s?' + NUM)); if (m) cur = 'JPY'; }
+      if (!m) { m = ptxt.match(new RegExp('(?:EUR|€)\\s?' + NUM)); if (m) cur = 'EUR'; }
+      if (!m) { m = ptxt.match(new RegExp('(?:GBP|£)\\s?' + NUM)); if (m) cur = 'GBP'; }
+      if (!m) { m = ptxt.match(new RegExp('C\\s?\\$\\s?' + NUM)); if (m) cur = 'CAD'; }
+      if (!m) { m = ptxt.match(new RegExp('AU?\\s?\\$\\s?' + NUM)); if (m) cur = 'AUD'; }
+      if (!m) { m = ptxt.match(new RegExp(NUM)); if (m && /円/.test(ptxt)) cur = 'JPY'; }
       if (!m) continue;
+      let raw = m[1];
+      if (/,\d{2}$/.test(raw)) raw = raw.replace(/\./g, '').replace(',', '.'); // 210,00 / 1.250,00（欧州表記）
+      m = [m[0], raw.replace(/,/g, '')];
       const dm = txt.match(/Sold\s+(?:on\s+)?([A-Z][a-z]{2}\s+\d{1,2},?\s+\d{4}|\d{1,2}\s+[A-Z][a-z]{2}\s+\d{4})/);
       const cm = txt.match(/(Brand New|New with tags|New without tags|New \(Other\)|Open box|Pre-Owned|Pre Owned|Certified Refurbished|Parts only|For parts)/i);
       const lm = txt.match(/(?:from|Located in|Ships from)\s+([A-Z][a-z]+(?: (?:States|Kingdom|Zealand|Kong|Korea|Africa|Arabia|Republic|Emirates|Rico|Rica|Lanka|Zealand))?)/);
       const sm = txt.match(/(Free (?:international )?(?:shipping|delivery)|\+\s?\$\s?[\d,.]+ (?:delivery|shipping))/i);
-      out.push({ t: t.replace(/^New Listing/i, '').trim(), p: parseFloat(m[1]), d: dm ? dm[1] : '', c: cm ? cm[1] : '', l: lm ? lm[1].trim() : '', s: sm ? sm[1] : '' });
+      out.push({ t: t.replace(/^New Listing/i, '').trim(), p: parseFloat(m[1]), cur, d: dm ? dm[1] : '', c: cm ? cm[1] : '', l: lm ? lm[1].trim() : '', s: sm ? sm[1] : '' });
     }
     return out;
   };
@@ -535,10 +547,30 @@ function parsePaste() {
   let d;
   try { d = JSON.parse(raw); } catch (e) { return showPreview(`<div class="warnbox">JSON として読めませんでした。ブックマークレットでコピーした内容をそのまま貼り付けてください。</div>`); }
   if (!d || !Array.isArray(d.items)) return showPreview(`<div class="warnbox">items がありません。</div>`);
-  const items = d.items.filter((i) => i && typeof i.p === 'number' && i.t).map((i) => ({ t: String(i.t).slice(0, 200), p: i.p, d: i.d || '', c: i.c || '', l: i.l || '', s: i.s || '' }));
+  const items = d.items.filter((i) => i && typeof i.p === 'number' && i.t).map((i) => normalizeItem({ t: String(i.t).slice(0, 200), p: i.p, cur: i.cur || 'USD', d: i.d || '', c: i.c || '', l: i.l || '', s: i.s || '' }));
   const mode = d.mode || (/LH_Sold=1/.test(d.url || '') ? 'sold' : 'active');
-  pending = { src: 'ebay', mode, q: d.q || '', cnt: d.cnt || '', url: d.url || '', at: d.at || new Date().toISOString(), pages: d.pages || 1, items };
+  const curs = [...new Set(items.map((i) => i.cur))].filter((c) => c !== 'USD');
+  pending = { src: 'ebay', mode, q: d.q || '', cnt: d.cnt || '', url: d.url || '', at: d.at || new Date().toISOString(), pages: d.pages || 1, items, curs };
   showConfirm();
+}
+// 通貨換算: p は常に USD。他通貨で取れた場合は pr に元の金額を残す
+const FX_DEFAULT = { EUR: 0.92, GBP: 0.79, CAD: 1.36, AUD: 1.52 }; // 1USD あたり
+function usdPerUnit(cur) {
+  if (cur === 'JPY') return 1 / state.settings.rate;
+  const fx = (state.settings.fx || {})[cur] || FX_DEFAULT[cur];
+  return fx ? 1 / fx : 1;
+}
+function normalizeItem(i) {
+  if (!i.cur || i.cur === 'USD') return i;
+  return { ...i, pr: i.p, p: Math.round(i.p * usdPerUnit(i.cur) * 100) / 100 };
+}
+function convertDatasetJpy(id) {
+  const ds = state.datasets.find((d) => d.id === id);
+  if (!ds) return;
+  if (!confirm('この取り込みの価格を「円で取り込まれたもの」とみなし、現在の為替（1USD=' + state.settings.rate + '円）でドルに換算します。よろしいですか？')) return;
+  ds.items = ds.items.map((i) => ({ ...i, cur: 'JPY', pr: i.pr ?? i.p, p: Math.round((i.pr ?? i.p) / state.settings.rate * 100) / 100 }));
+  ds.curs = ['JPY'];
+  save(); refreshAll(); toast('換算しました');
 }
 function showPreview(html) { $('#iPreview').innerHTML = html; }
 function showConfirm() {
@@ -555,7 +587,7 @@ function showConfirm() {
       <label id="cNewWrap" class="${gb ? 'hidden' : ''}">新しいブランド名（英語）<input type="text" id="cNewBrand" placeholder="例: Marni"></label>
       <button class="btn gold" id="cSave" style="margin-top:14px">この内容で保存</button>
     </div>
-    <p class="muted" style="margin-top:6px">${p.mode === 'sold' && dated < p.items.length * 0.5 ? '⚠ 売れた日が取れていない行が多いため、1日あたりの計算は eBay 表示件数÷90日で代用します。' : ''}</p>`);
+    <p class="muted" style="margin-top:6px">${p.curs && p.curs.length ? `通貨 ${p.curs.join('/')} 表示だったため、1USD=${state.settings.rate}円（他通貨は設定の為替）でドルに換算しました。 ` : ''}${p.mode === 'sold' && dated < p.items.length * 0.5 ? '⚠ 売れた日が取れていない行が多いため、1日あたりの計算は eBay 表示件数÷90日で代用します。' : ''}</p>`);
   $('#cBrand').onchange = () => $('#cNewWrap').classList.toggle('hidden', $('#cBrand').value !== '__new');
   $('#cSave').onclick = () => {
     let bid = $('#cBrand').value;
@@ -627,9 +659,15 @@ function renderDatasets() {
   const list = [...state.datasets].sort((a, b) => (a.at < b.at ? 1 : -1));
   tb.innerHTML = list.map((d) => {
     const b = brandById(d.brand), c = catById(d.cat);
-    return `<tr><td>${esc(d.at.replace('T', ' ').slice(0, 16))}</td><td>${esc(b ? b.n : d.brand)}</td><td>${esc(c ? c.ja : d.cat)}</td><td><span class="badge ${d.mode === 'sold' ? 'b-A' : 'b-B'}">${d.mode === 'sold' ? 'Sold' : '出品中'}</span></td><td class="muted">${esc(d.q)}</td><td class="num">${d.items.length}</td><td class="num">${esc(d.cnt || '—')}</td><td>${d.pages || 1}</td><td><button class="btn danger sm" data-del="${d.id}">削除</button></td></tr>`;
-  }).join('') || '<tr><td colspan="9" class="muted">まだありません</td></tr>';
+    const curs = d.curs && d.curs.length ? d.curs.join('/') + '→USD' : (d.items.some((i) => i.cur && i.cur !== 'USD') ? '換算済' : 'USD');
+    const med = median(d.items.map((i) => i.p));
+    const suspicious = !d.curs?.length && !d.items.some((i) => i.cur && i.cur !== 'USD') && med > 3000;
+    return `<tr><td>${esc(d.at.replace('T', ' ').slice(0, 16))}</td><td>${esc(b ? b.n : d.brand)}</td><td>${esc(c ? c.ja : d.cat)}</td><td><span class="badge ${d.mode === 'sold' ? 'b-A' : 'b-B'}">${d.mode === 'sold' ? 'Sold' : '出品中'}</span></td><td class="muted">${esc(d.q)}</td><td class="num">${d.items.length}</td><td class="num">${esc(d.cnt || '—')}</td><td>${d.pages || 1}</td>
+      <td>${esc(curs)}${suspicious ? ` <span class="badge b-C" title="中央値 $${Math.round(med)}。円の数字をドルとして取り込んだ可能性">要確認</span>` : ''}</td>
+      <td><button class="btn ghost sm" data-jpy="${d.id}" title="円で取り込まれていた場合にドルへ換算">円→$換算</button> <button class="btn danger sm" data-del="${d.id}">削除</button></td></tr>`;
+  }).join('') || '<tr><td colspan="10" class="muted">まだありません</td></tr>';
   $$('button[data-del]', tb).forEach((btn) => btn.onclick = () => { if (!confirm('このデータを削除しますか？')) return; state.datasets = state.datasets.filter((d) => d.id !== btn.dataset.del); save(); refreshAll(); });
+  $$('button[data-jpy]', tb).forEach((btn) => btn.onclick = () => convertDatasetJpy(btn.dataset.jpy));
 }
 function renderQueue() {
   // 実測がまだない、需要★の高い組み合わせを提案
@@ -663,7 +701,11 @@ async function fetchRate() {
   try {
     const r = await fetch('https://open.er-api.com/v6/latest/USD');
     const d = await r.json();
-    if (d && d.rates && d.rates.JPY) { $('#sRate').value = Math.round(d.rates.JPY * 100) / 100; toast('為替を取得しました: 1USD=' + $('#sRate').value + '円'); }
+    if (d && d.rates && d.rates.JPY) {
+      $('#sRate').value = Math.round(d.rates.JPY * 100) / 100;
+      state.settings.fx = { EUR: d.rates.EUR, GBP: d.rates.GBP, CAD: d.rates.CAD, AUD: d.rates.AUD };
+      toast('為替を取得しました: 1USD=' + $('#sRate').value + '円');
+    }
     else throw new Error('no JPY');
   } catch (e) { toast('為替の取得に失敗しました。手入力してください。'); }
 }
