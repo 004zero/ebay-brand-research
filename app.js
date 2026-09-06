@@ -117,9 +117,12 @@ function wordRx(name) {
 }
 function pickTags(title, list) { const out = []; for (const n of list) if (wordRx(n).test(title)) out.push(n); return out; }
 function primaryModel(title, brand) {
-  // 長い名前を優先（"Speedy Bandouliere" > "Speedy"）
-  const list = brand._sortedModels || (brand._sortedModels = [...(brand.models || [])].sort((a, b) => b.length - a.length));
-  for (const n of list) if (wordRx(n).test(title)) return n;
+  // 固有モデル名を優先し、種類名（Long Wallet 等）は固有名が無いときだけ。同じ優先度なら長い名前を優先（"Speedy Bandouliere" > "Speedy"）
+  if (!brand._sortedModels) {
+    const all = [...(brand.models || [])].sort((a, b) => b.length - a.length);
+    brand._sortedModels = [...all.filter((n) => !GENERIC.has(n)), ...all.filter((n) => GENERIC.has(n))];
+  }
+  for (const n of brand._sortedModels) if (wordRx(n).test(title)) return n;
   return null;
 }
 function primaryLine(title, brand) {
@@ -127,9 +130,13 @@ function primaryLine(title, brand) {
   for (const n of list) if (wordRx(n).test(title)) return n;
   return null;
 }
+// eBay がタイトル末尾に付ける読み上げ用の隠し文字などを除去
+function cleanTitle(t) {
+  return String(t || '').replace(/\s*Opens in a new window or tab\s*/gi, ' ').replace(/^(New Listing|Sponsored)\s*/i, '').replace(/\s+/g, ' ').trim();
+}
 function condOf(it) {
-  const s = `${it.c || ''} ${it.t || ''}`;
-  if (/brand new|new with|new without|new \(other\)|\bBNWT\b|\bNWT\b|unused|\bnew\b/i.test(s)) return 'new';
+  const s = `${it.c || ''} ${cleanTitle(it.t)}`;
+  if (/brand new|new with|new without|new \(other\)|\bBNWT\b|\bNWT\b|\bNWOT\b|unused|未使用/i.test(s)) return 'new';
   return 'used';
 }
 function isJapan(it) { return /japan/i.test(it.l || '') || /japan/i.test(it.s || ''); }
@@ -160,7 +167,7 @@ function metrics(brand, catId) {
   if (!sold && !active) return null;
   const m = { sold, active, n: 0 };
   if (sold) {
-    const items = sold.items.filter((i) => i.p > 0);
+    const items = sold.items.filter((i) => i.p > 0).map((i) => ({ ...i, t: cleanTitle(i.t) }));
     m.n = items.length;
     const prices = items.map((i) => i.p);
     const dated = items.map((i) => ({ ...i, dt: parseDate(i.d) })).filter((i) => i.dt);
@@ -175,20 +182,21 @@ function metrics(brand, catId) {
     }
     m.newest = newest; m.oldest = oldest; m.span = span;
     if (span) {
-      // 「売れた日が新しい順」で集めた前提：集めた件数 ÷ 期間
+      // 「売れた日が新しい順」で集めた前提：集めた件数 ÷ 期間。
+      // 直近30日・90日は、収集期間がその日数以上あれば実数、足りなければ1日あたりから換算
       m.perDay = m.n / span;
-      if (span >= 30) m.sold30 = dated.filter((i) => newest - i.dt <= 30 * DAY).length;
-      else m.sold30 = Math.round(m.perDay * 30);
-      if (m.n >= m.total && span > 90) m.sold90 = dated.filter((i) => newest - i.dt <= 90 * DAY).length;
-      else m.sold90 = Math.max(m.total, Math.round(m.perDay * Math.min(90, span)));
-      m.sold30 = Math.min(m.sold30, m.sold90);
+      m.sold30 = span >= 30 ? dated.filter((i) => newest - i.dt <= 30 * DAY).length : Math.round(m.perDay * 30);
+      m.sold90 = span >= 90 ? dated.filter((i) => newest - i.dt <= 90 * DAY).length : Math.round(m.perDay * 90);
+      m.sold90 = Math.max(m.sold90, m.sold30);
+      m.sold90Src = span >= 90 ? '売れた日ベース（実数）' : `${span}日分から換算`;
     } else {
       // 日付が取れない場合は eBay の表示件数を約90日分とみなす
-      m.sold90 = m.total; m.perDay = m.total / 90; m.sold30 = Math.round(m.perDay * 30);
+      m.sold90 = m.total; m.perDay = m.total / 90; m.sold30 = Math.round(m.perDay * 30); m.sold90Src = 'eBay 表示件数÷90日で代用';
     }
     m.median = median(prices); m.avg = prices.reduce((a, b) => a + b, 0) / (prices.length || 1);
     m.p25 = quantile(prices, 0.25); m.p75 = quantile(prices, 0.75); m.min = Math.min(...prices); m.max = Math.max(...prices);
-    m.stability = m.median ? Math.max(0, 1 - Math.min(1, (m.p75 - m.p25) / m.median)) : 0;
+    // 価格の安定度: 中心帯の幅（P75−P25）÷中央値 が小さいほど高い。0.2→83, 0.5→67, 1.2→45
+    m.stability = m.median ? 1 / (1 + (m.p75 - m.p25) / m.median) : 0;
     const locKnown = items.filter((i) => i.l).length;
     m.jpShare = locKnown >= 5 ? items.filter(isJapan).length / locKnown : null;
     m.newShare = items.filter((i) => condOf(i) === 'new').length / (items.length || 1);
@@ -391,7 +399,7 @@ function renderDetail() {
     ${m.lowSample ? `<div class="warnbox" style="margin-bottom:8px">サンプル数が ${m.n} 件と少ないため参考値です（設定の最低サンプル数: ${s.minN}）。</div>` : ''}
     <div class="kpis">
       <div class="kpi hi"><div class="l">30日の売れた数</div><div class="v">${fmtN(m.sold30)}</div><div class="s">1日あたり ${fmtN(m.perDay, 2)} 件</div></div>
-      <div class="kpi"><div class="l">90日の売れた数</div><div class="v">${fmtN(m.sold90)}</div><div class="s">eBay 表示件数ベース</div></div>
+      <div class="kpi"><div class="l">90日の売れた数</div><div class="v">${fmtN(m.sold90)}</div><div class="s">${esc(m.sold90Src || '')}</div></div>
       <div class="kpi"><div class="l">売切率</div><div class="v">${fmtPct(m.sellThrough)}</div><div class="s">${m.active ? `出品中 ${fmtN(m.activeN)} 件` : '出品中データ未取込'}</div></div>
       <div class="kpi"><div class="l">在庫消化日数</div><div class="v">${m.daysSupply != null ? fmtN(m.daysSupply) + '日' : '—'}</div><div class="s">出品中 ÷ 1日あたり</div></div>
       <div class="kpi"><div class="l">売れた中央値</div><div class="v">${fmtUsd(m.median)}</div><div class="s">平均 ${fmtUsd(m.avg)} / 中心帯 ${fmtUsd(m.p25)}〜${fmtUsd(m.p75)}</div></div>
@@ -420,11 +428,12 @@ function renderDetail() {
   // モデル
   const models = m.models.slice(0, 40);
   html += `<div class="card"><h2>売れ筋モデル <span class="muted">（タイトルから自動判定・モデル未判定 ${m.unmatched} 件）</span></h2>
+    <p class="muted">固有のモデル名（Matelasse・Cambon など）を優先して判定し、固有名がないものは「（種類）」＝財布の形などで集計しています。</p>
     <div class="tbl-wrap"><table><thead><tr><th>モデル</th><th class="num">売れた数</th><th class="num">シェア</th><th class="num">30日換算</th><th class="num">中央値</th><th class="num">仕入上限</th><th>仕入先</th><th>eBay</th></tr></thead><tbody>
     ${models.map((x) => {
       const p = profit(x.median, cid);
       const q = `${b.kw} ${x.name}`;
-      return `<tr><td><b>${esc(x.name)}</b></td><td class="num">${x.n}</td><td class="num">${Math.round(x.share * 100)}%</td><td class="num">${x.perDay != null ? fmtN(x.perDay * 30, 1) : '—'}</td><td class="num">${fmtUsd(x.median)}</td><td class="num"><b>${fmtYen(p.maxBuy)}</b></td>
+      return `<tr><td><b>${esc(x.name)}</b>${GENERIC.has(x.name) ? ' <span class="muted">（種類）</span>' : ''}</td><td class="num">${x.n}</td><td class="num">${Math.round(x.share * 100)}%</td><td class="num">${x.perDay != null ? fmtN(x.perDay * 30, 1) : '—'}</td><td class="num">${fmtUsd(x.median)}</td><td class="num"><b>${fmtYen(p.maxBuy)}</b></td>
         <td class="links">${SOURCES.slice(0, 4).map((s2) => `<a href="${s2.u.replace('{q}', enc(b.ja + ' ' + x.name))}" target="_blank" rel="noopener">${esc(s2.n)}</a>`).join('')}</td>
         <td><a href="https://www.ebay.com/sch/i.html?_nkw=${enc(q)}&LH_Sold=1&LH_Complete=1&_sop=13${jp ? '&LH_SALBN=1&_salic=104' : ''}" target="_blank" rel="noopener">Sold</a></td></tr>`;
     }).join('') || '<tr><td colspan="8" class="muted">モデル名を判定できませんでした（下の頻出ワードを参考にしてください）</td></tr>'}
@@ -476,7 +485,7 @@ async function BM_EBAY() {
       const cm = txt.match(/(Brand New|New with tags|New without tags|New \(Other\)|Open box|Pre-Owned|Pre Owned|Certified Refurbished|Parts only|For parts)/i);
       const lm = txt.match(/(?:from|Located in|Ships from)\s+([A-Z][a-z]+(?: (?:States|Kingdom|Zealand|Kong|Korea|Africa|Arabia|Republic|Emirates|Rico|Rica|Lanka|Zealand))?)/);
       const sm = txt.match(/(Free (?:international )?(?:shipping|delivery)|\+\s?\$\s?[\d,.]+ (?:delivery|shipping))/i);
-      out.push({ t: t.replace(/^New Listing/i, '').trim(), p: parseFloat(m[1]), cur, d: dm ? dm[1] : '', c: cm ? cm[1] : '', l: lm ? lm[1].trim() : '', s: sm ? sm[1] : '' });
+      out.push({ t: t.replace(/Opens in a new window or tab/gi, '').replace(/^(New Listing|Sponsored)/i, '').replace(/\s+/g, ' ').trim(), p: parseFloat(m[1]), cur, d: dm ? dm[1] : '', c: cm ? cm[1] : '', l: lm ? lm[1].trim() : '', s: sm ? sm[1] : '' });
     }
     return out;
   };
